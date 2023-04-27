@@ -1,0 +1,27 @@
+diff --git a/wireguard-go/tun/netstack/tun.go b/wireguard-go/tun/netstack/tun.go
+index fa15f53..424f57b 100644
+--- a/wireguard-go/tun/netstack/tun.go
++++ b/wireguard-go/tun/netstack/tun.go
+@@ -21,6 +21,7 @@ import (
+ 	"strings"
+ 	"syscall"
+ 	"time"
++	mrand "math/rand"
+ 
+ 	"golang.zx2c4.com/wireguard/tun"
+ 
+@@ -912,6 +913,14 @@ func (tnet *Net) LookupContextHost(ctx context.Context, host string) ([]string,
+ 			}
+ 		}
+ 	}
++
++	mrand.Shuffle(len(addrsV6), func(i, j int) {
++		addrsV6[i], addrsV6[j] = addrsV6[j], addrsV6[i]
++	})
++	mrand.Shuffle(len(addrsV4), func(i, j int) {
++		addrsV4[i], addrsV4[j] = addrsV4[j], addrsV4[i]
++	})
++
+ 	// We don't do RFC6724. Instead just put V6 addresess first if an IPv6 address is enabled
+ 	var addrs []netip.Addr
+ 	if tnet.hasV6 {

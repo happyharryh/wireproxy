@@ -6,7 +6,6 @@ import (
 	"errors"
 	"io"
 	"log"
-	"math/rand"
 	"net"
 	"os"
 	"strconv"
@@ -64,10 +63,6 @@ func (d VirtualTun) ResolveAddrWithContext(ctx context.Context, name string) (*n
 	if size == 0 {
 		return nil, errors.New("no address found for: " + name)
 	}
-
-	rand.Shuffle(size, func(i, j int) {
-		addrs[i], addrs[j] = addrs[j], addrs[i]
-	})
 
 	var addr netip.Addr
 	for _, saddr := range addrs {
