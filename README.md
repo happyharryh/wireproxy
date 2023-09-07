@@ -3,11 +3,11 @@
 [![Build status](https://github.com/octeep/wireproxy/actions/workflows/build.yml/badge.svg)](https://github.com/octeep/wireproxy/actions)
 [![Documentation](https://img.shields.io/badge/godoc-wireproxy-blue)](https://pkg.go.dev/github.com/octeep/wireproxy)
 
-A wireguard client that exposes itself as a socks5 proxy or tunnels.
+A wireguard client that exposes itself as a socks5/http proxy or tunnels.
 
 # What is this
 `wireproxy` is a completely userspace application that connects to a wireguard peer,
-and exposes a socks5 proxy or tunnels on the machine. This can be useful if you need
+and exposes a socks5/http proxy or tunnels on the machine. This can be useful if you need
 to connect to certain sites via a wireguard peer, but can't be bothered to setup a new network
 interface for whatever reasons.
 
@@ -22,7 +22,7 @@ anything.
 
 # Feature
 - TCP static routing for client and server
-- SOCKS5 proxy (currently only CONNECT is supported) 
+- SOCKS5/HTTP proxy (currently only CONNECT is supported)
 
 # TODO
 - UDP Support in SOCKS5
@@ -34,8 +34,8 @@ anything.
 ```
 
 ```
-usage: wireproxy [-h|--help] -c|--config "<value>" [-d|--daemon]
-                 [-n|--configtest]
+usage: wireproxy [-h|--help] [-c|--config "<value>"] [-s|--silent]
+                 [-d|--daemon] [-v|--version] [-n|--configtest]
 
                  Userspace wireguard client for proxying
 
@@ -43,7 +43,9 @@ Arguments:
 
   -h  --help        Print help information
   -c  --config      Path of configuration file
+  -s  --silent      Silent mode
   -d  --daemon      Make wireproxy run in background
+  -v  --version     Print version
   -n  --configtest  Configtest mode. Only check the configuration file for
                     validity.
 ```
@@ -54,6 +56,9 @@ git clone https://github.com/octeep/wireproxy
 cd wireproxy
 make
 ```
+
+# Use with VPN
+Instructions for using wireproxy with Firefox container tabs and auto-start on MacOS can be found [here](/UseWithVPN.md).
 
 # Sample config file
 ```
@@ -89,11 +94,31 @@ Target = play.cubecraft.net:25565
 ListenPort = 3422
 Target = localhost:25545
 
+# STDIOTunnel is a tunnel connecting the standard input and output of the wireproxy
+# process to the specified TCP target via wireguard.
+# This is especially useful to use wireproxy as a ProxyCommand parameter in openssh
+# For example:
+#    ssh -o ProxyCommand='wireproxy -c myconfig.conf' ssh.myserver.net
+# Flow:
+# Piped command -->(wireguard)--> ssh.myserver.net:22
+[STDIOTunnel]
+Target = ssh.myserver.net:22
+
 # Socks5 creates a socks5 proxy on your LAN, and all traffic would be routed via wireguard.
 [Socks5]
 BindAddress = 127.0.0.1:25344
 
 # Socks5 authentication parameters, specifying username and password enables
+# proxy authentication.
+#Username = ...
+# Avoid using spaces in the password field
+#Password = ...
+
+# http creates a http proxy on your LAN, and all traffic would be routed via wireguard.
+[http]
+BindAddress = 127.0.0.1:25345
+
+# HTTP authentication parameters, specifying username and password enables
 # proxy authentication.
 #Username = ...
 # Avoid using spaces in the password field
@@ -149,10 +174,17 @@ ListenPort = 5080
 Target = service-three.servicenet:80
 ```
 
-## Donation
-<noscript><a href="https://liberapay.com/octeep/donate"><img alt="Donate using Liberapay" src="https://liberapay.com/assets/widgets/donate.svg"></a></noscript>
+Wireproxy can also allow peers to connect to it:
+```
+[Interface]
+ListenPort = 5400
+...
 
+[Peer]
+PublicKey = YYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY=
+AllowedIPs = 10.254.254.100/32
+# Note there is no Endpoint defined here.
+```
 
-## Stargazers over time
-
+# Stargazers over time
 [![Stargazers over time](https://starchart.cc/octeep/wireproxy.svg)](https://starchart.cc/octeep/wireproxy)

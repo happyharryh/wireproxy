@@ -15,22 +15,27 @@ import (
 type PeerConfig struct {
 	PublicKey    string
 	PreSharedKey string
-	Endpoint     string
+	Endpoint     *string
 	KeepAlive    int
 	AllowedIPs   []netip.Prefix
 }
 
 // DeviceConfig contains the information to initiate a wireguard connection
 type DeviceConfig struct {
-	SecretKey string
-	Endpoint  []netip.Addr
-	Peers     []PeerConfig
-	DNS       []netip.Addr
-	MTU       int
+	SecretKey  string
+	Endpoint   []netip.Addr
+	Peers      []PeerConfig
+	DNS        []netip.Addr
+	MTU        int
+	ListenPort *int
 }
 
 type TCPClientTunnelConfig struct {
 	BindAddress *net.TCPAddr
+	Target      string
+}
+
+type STDIOTunnelConfig struct {
 	Target      string
 }
 
@@ -40,6 +45,12 @@ type TCPServerTunnelConfig struct {
 }
 
 type Socks5Config struct {
+	BindAddress string
+	Username    string
+	Password    string
+}
+
+type HTTPConfig struct {
 	BindAddress string
 	Username    string
 	Password    string
@@ -140,10 +151,6 @@ func parseCIDRNetIP(section *ini.Section, keyName string) ([]netip.Addr, error) 
 		}
 
 		addr := prefix.Addr()
-		if prefix.Bits() != addr.BitLen() {
-			return nil, errors.New("interface address subnet should be /32 for IPv4 and /128 for IPv6")
-		}
-
 		ips = append(ips, addr)
 	}
 	return ips, nil
@@ -219,6 +226,14 @@ func ParseInterface(cfg *ini.File, device *DeviceConfig) error {
 		device.MTU = value
 	}
 
+	if sectionKey, err := section.GetKey("ListenPort"); err == nil {
+		value, err := sectionKey.Int()
+		if err != nil {
+			return err
+		}
+		device.ListenPort = &value
+	}
+
 	return nil
 }
 
@@ -249,15 +264,14 @@ func ParsePeers(cfg *ini.File, peers *[]PeerConfig) error {
 			peer.PreSharedKey = value
 		}
 
-		decoded, err = parseString(section, "Endpoint")
-		if err != nil {
-			return err
+		if sectionKey, err := section.GetKey("Endpoint"); err == nil {
+			value := sectionKey.String()
+			decoded, err = resolveIPPAndPort(strings.ToLower(value))
+			if err != nil {
+				return err
+			}
+			peer.Endpoint = &decoded
 		}
-		decoded, err = resolveIPPAndPort(decoded)
-		if err != nil {
-			return err
-		}
-		peer.Endpoint = decoded
 
 		if sectionKey, err := section.GetKey("PersistentKeepalive"); err == nil {
 			value, err := sectionKey.Int()
@@ -294,6 +308,17 @@ func parseTCPClientTunnelConfig(section *ini.Section) (RoutineSpawner, error) {
 	return config, nil
 }
 
+func parseSTDIOTunnelConfig(section *ini.Section) (RoutineSpawner, error) {
+	config := &STDIOTunnelConfig{}
+	targetSection, err := parseString(section, "Target")
+	if err != nil {
+		return nil, err
+	}
+	config.Target = targetSection
+
+	return config, nil
+}
+
 func parseTCPServerTunnelConfig(section *ini.Section) (RoutineSpawner, error) {
 	config := &TCPServerTunnelConfig{}
 
@@ -314,6 +339,24 @@ func parseTCPServerTunnelConfig(section *ini.Section) (RoutineSpawner, error) {
 
 func parseSocks5Config(section *ini.Section) (RoutineSpawner, error) {
 	config := &Socks5Config{}
+
+	bindAddress, err := parseString(section, "BindAddress")
+	if err != nil {
+		return nil, err
+	}
+	config.BindAddress = bindAddress
+
+	username, _ := parseString(section, "Username")
+	config.Username = username
+
+	password, _ := parseString(section, "Password")
+	config.Password = password
+
+	return config, nil
+}
+
+func parseHTTPConfig(section *ini.Section) (RoutineSpawner, error) {
+	config := &HTTPConfig{}
 
 	bindAddress, err := parseString(section, "BindAddress")
 	if err != nil {
@@ -394,12 +437,22 @@ func ParseConfig(path string) (*Configuration, error) {
 		return nil, err
 	}
 
+	err = parseRoutinesConfig(&routinesSpawners, cfg, "STDIOTunnel", parseSTDIOTunnelConfig)
+	if err != nil {
+		return nil, err
+	}
+
 	err = parseRoutinesConfig(&routinesSpawners, cfg, "TCPServerTunnel", parseTCPServerTunnelConfig)
 	if err != nil {
 		return nil, err
 	}
 
 	err = parseRoutinesConfig(&routinesSpawners, cfg, "Socks5", parseSocks5Config)
+	if err != nil {
+		return nil, err
+	}
+
+	err = parseRoutinesConfig(&routinesSpawners, cfg, "http", parseHTTPConfig)
 	if err != nil {
 		return nil, err
 	}

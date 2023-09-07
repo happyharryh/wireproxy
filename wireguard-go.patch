@@ -1,5 +1,5 @@
 diff --git a/wireguard-go/tun/netstack/tun.go b/wireguard-go/tun/netstack/tun.go
-index fa15f53..424f57b 100644
+index 2b73054..02919cb 100644
 --- a/wireguard-go/tun/netstack/tun.go
 +++ b/wireguard-go/tun/netstack/tun.go
 @@ -21,6 +21,7 @@ import (
@@ -22,6 +22,6 @@ index fa15f53..424f57b 100644
 +		addrsV4[i], addrsV4[j] = addrsV4[j], addrsV4[i]
 +	})
 +
- 	// We don't do RFC6724. Instead just put V6 addresess first if an IPv6 address is enabled
+ 	// We don't do RFC6724. Instead just put V6 addresses first if an IPv6 address is enabled
  	var addrs []netip.Addr
  	if tnet.hasV6 {

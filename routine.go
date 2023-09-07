@@ -132,6 +132,22 @@ func (config *Socks5Config) SpawnRoutine(vt *VirtualTun) {
 	}
 }
 
+// SpawnRoutine spawns a http server.
+func (config *HTTPConfig) SpawnRoutine(vt *VirtualTun) {
+	http := &HTTPServer{
+		config: config,
+		dial:   vt.Tnet.Dial,
+		auth:   CredentialValidator{config.Username, config.Password},
+	}
+	if config.Username != "" || config.Password != "" {
+		http.authRequired = true
+	}
+
+	if err := http.ListenAndServe("tcp", config.BindAddress); err != nil {
+		log.Fatal(err)
+	}
+}
+
 // Valid checks the authentication data in CredentialValidator and compare them
 // to username and password in constant time.
 func (c CredentialValidator) Valid(username, password string) bool {
@@ -141,9 +157,8 @@ func (c CredentialValidator) Valid(username, password string) bool {
 }
 
 // connForward copy data from `from` to `to`, then close both stream.
-func connForward(bufSize int, from io.ReadWriteCloser, to io.ReadWriteCloser) {
-	buf := make([]byte, bufSize)
-	_, err := io.CopyBuffer(to, from, buf)
+func connForward(from io.ReadWriteCloser, to io.ReadWriteCloser) {
+	_, err := io.Copy(to, from)
 	if err != nil {
 		errorLogger.Printf("Cannot forward traffic: %s\n", err.Error())
 	}
@@ -167,8 +182,34 @@ func tcpClientForward(vt *VirtualTun, raddr *addressPort, conn net.Conn) {
 		return
 	}
 
-	go connForward(1024, sconn, conn)
-	go connForward(1024, conn, sconn)
+	go connForward(sconn, conn)
+	go connForward(conn, sconn)
+}
+
+// STDIOTcpForward starts a new connection via wireguard and forward traffic from `conn`
+func STDIOTcpForward(vt *VirtualTun, raddr *addressPort) {
+	target, err := vt.resolveToAddrPort(raddr)
+	if err != nil {
+		errorLogger.Printf("Name resolution error for %s: %s\n", raddr.address, err.Error())
+		return
+	}
+
+	// os.Stdout has previously been remapped to stderr, se we can't use it
+	stdout, err := os.OpenFile("/dev/stdout", os.O_WRONLY, 0)
+	if err != nil {
+		errorLogger.Printf("Failed to open /dev/stdout: %s\n", err.Error())
+		return
+	}
+
+	tcpAddr := TCPAddrFromAddrPort(*target)
+	sconn, err := vt.Tnet.DialTCP(tcpAddr)
+	if err != nil {
+		errorLogger.Printf("TCP Client Tunnel to %s (%s): %s\n", target, tcpAddr, err.Error())
+		return
+	}
+
+	go connForward(os.Stdin, sconn)
+	go connForward(sconn, stdout)
 }
 
 // SpawnRoutine spawns a local TCP server which acts as a proxy to the specified target
@@ -192,6 +233,16 @@ func (conf *TCPClientTunnelConfig) SpawnRoutine(vt *VirtualTun) {
 	}
 }
 
+// SpawnRoutine connects to the specified target and plumbs it to STDIN / STDOUT
+func (conf *STDIOTunnelConfig) SpawnRoutine(vt *VirtualTun) {
+	raddr, err := parseAddressPort(conf.Target)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	go STDIOTcpForward(vt, raddr)
+}
+
 // tcpServerForward starts a new connection locally and forward traffic from `conn`
 func tcpServerForward(vt *VirtualTun, raddr *addressPort, conn net.Conn) {
 	target, err := vt.resolveToAddrPort(raddr)
@@ -208,8 +259,8 @@ func tcpServerForward(vt *VirtualTun, raddr *addressPort, conn net.Conn) {
 		return
 	}
 
-	go connForward(1024, sconn, conn)
-	go connForward(1024, conn, sconn)
+	go connForward(sconn, conn)
+	go connForward(conn, sconn)
 }
 
 // SpawnRoutine spawns a TCP server on wireguard which acts as a proxy to the specified target

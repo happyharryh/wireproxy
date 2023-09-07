@@ -26,15 +26,21 @@ func createIPCRequest(conf *DeviceConfig) (*DeviceSetting, error) {
 
 	request.WriteString(fmt.Sprintf("private_key=%s\n", conf.SecretKey))
 
+	if conf.ListenPort != nil {
+		request.WriteString(fmt.Sprintf("listen_port=%d\n", *conf.ListenPort))
+	}
+
 	for _, peer := range conf.Peers {
 		request.WriteString(fmt.Sprintf(heredoc.Doc(`
 				public_key=%s
-				endpoint=%s
 				persistent_keepalive_interval=%d
 				preshared_key=%s
 			`),
-			peer.PublicKey, peer.Endpoint, peer.KeepAlive, peer.PreSharedKey,
+			peer.PublicKey, peer.KeepAlive, peer.PreSharedKey,
 		))
+		if peer.Endpoint != nil {
+			request.WriteString(fmt.Sprintf("endpoint=%s\n", *peer.Endpoint))
+		}
 
 		if len(peer.AllowedIPs) > 0 {
 			for _, ip := range peer.AllowedIPs {
@@ -53,7 +59,7 @@ func createIPCRequest(conf *DeviceConfig) (*DeviceSetting, error) {
 }
 
 // StartWireguard creates a tun interface on netstack given a configuration
-func StartWireguard(conf *DeviceConfig) (*VirtualTun, error) {
+func StartWireguard(conf *DeviceConfig, logLevel int) (*VirtualTun, error) {
 	setting, err := createIPCRequest(conf)
 	if err != nil {
 		return nil, err
@@ -63,7 +69,7 @@ func StartWireguard(conf *DeviceConfig) (*VirtualTun, error) {
 	if err != nil {
 		return nil, err
 	}
-	dev := device.NewDevice(tun, conn.NewDefaultBind(), device.NewLogger(device.LogLevelVerbose, ""))
+	dev := device.NewDevice(tun, conn.NewDefaultBind(), device.NewLogger(logLevel, ""))
 	err = dev.IpcSet(setting.ipcRequest)
 	if err != nil {
 		return nil, err
